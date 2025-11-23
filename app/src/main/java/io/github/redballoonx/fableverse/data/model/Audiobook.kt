@@ -10,7 +10,9 @@ data class Audiobook(
     val coverUri: String? = null,
     val totalDuration: Long = 0,
     val currentPosition: Long = 0,
-    val progress: Float = 0f,          // 0.0 - 1.0
+    val currentChapterIndex: Int = 0,        // ← Wichtig!
+    val playbackSpeed: Float = 1.0f,         // ← Wichtig!
+    val progress: Float = 0f,
     val isFinished: Boolean = false,
     val lastPlayed: Long? = null,
     val dateAdded: Long = System.currentTimeMillis()
@@ -24,7 +26,6 @@ data class Chapter(
     val duration: Long = 0
 )
 
-// Für gruppierte Ansicht nach Autoren
 data class AuthorWithBooks(
     val authorId: Long,
     val authorName: String,

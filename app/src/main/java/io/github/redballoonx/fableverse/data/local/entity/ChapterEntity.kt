@@ -9,7 +9,7 @@ import androidx.room.PrimaryKey
     tableName = "chapters",
     foreignKeys = [
         ForeignKey(
-            entity = AudiobookEntity::class,
+            entity = AudiobookEntity::class,  // ← Muss existieren!
             parentColumns = ["id"],
             childColumns = ["audiobookId"],
             onDelete = ForeignKey.CASCADE
@@ -23,6 +23,9 @@ data class ChapterEntity(
     val audiobookId: Long,
     val title: String,
     val uri: String,
-    val position: Int,           // Reihenfolge: 0, 1, 2...
-    val duration: Long = 0       // In Millisekunden
+    val position: Int,
+    val duration: Long = 0,
+    val trackNumber: Int? = null,
+    val artist: String? = null,
+    val album: String? = null
 )

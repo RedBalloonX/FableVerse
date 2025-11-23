@@ -1,7 +1,6 @@
 package io.github.redballoonx.fableverse.data.repository
 
 import android.content.Context
-import android.net.Uri
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.github.redballoonx.fableverse.data.local.AudiobookDatabase
@@ -9,18 +8,19 @@ import io.github.redballoonx.fableverse.data.local.PreferencesManager
 import io.github.redballoonx.fableverse.data.local.entity.AudiobookEntity
 import io.github.redballoonx.fableverse.data.local.entity.AuthorEntity
 import io.github.redballoonx.fableverse.data.local.entity.ChapterEntity
-import io.github.redballoonx.fableverse.data.model.Audiobook
-import io.github.redballoonx.fableverse.data.model.AuthorWithBooks
-import io.github.redballoonx.fableverse.data.model.Chapter
+import io.github.redballoonx.fableverse.data.metadata.MetadataExtractor
+import io.github.redballoonx.fableverse.data.model.Audiobook       // ← FEHLTE
+import io.github.redballoonx.fableverse.data.model.AuthorWithBooks // ← FEHLTE
+import io.github.redballoonx.fableverse.data.model.Chapter         // ← FEHLTE
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-
 class AudiobookRepository(
     private val context: Context,
     private val preferencesManager: PreferencesManager,
-    private val database: AudiobookDatabase
+    private val database: AudiobookDatabase,
+    private val metadataExtractor: MetadataExtractor  // ← NEU
 ) {
 
     private val dao = database.audiobookDao()
@@ -40,7 +40,6 @@ class AudiobookRepository(
     }
 
     // === Scannen und Importieren ===
-
     suspend fun scanAndImportFolder(uriString: String): Int {
         return withContext(Dispatchers.IO) {
             // 1. Scanne Ordnerstruktur
@@ -63,26 +62,60 @@ class AudiobookRepository(
                 authorMap[authorName] = authorId
             }
 
-            // 4. Speichere Hörbücher und Kapitel
+            // 4. Speichere Hörbücher und Kapitel MIT METADATEN
             var totalBooks = 0
             scannedData.forEach { (authorName, books) ->
                 val authorId = authorMap[authorName] ?: return@forEach
 
                 books.forEach { scannedBook ->
+                    // NEU: Extrahiere Metadaten aus allen MP3s
+                    val mp3Uris = scannedBook.chapters.map { it.uri.toUri() }
+                    val audiobookMetadata = metadataExtractor.extractAudiobookMetadata(mp3Uris)
+
+                    // Speichere Hörbuch
                     val audiobookId = dao.insertAudiobook(
                         AudiobookEntity(
-                            title = scannedBook.title,
+                            title = audiobookMetadata.title
+                                ?: scannedBook.title,  // Metadaten haben Vorrang
                             folderUri = scannedBook.folderUri,
-                            authorId = authorId
+                            authorId = authorId,
+                            albumTitle = audiobookMetadata.album,
+                            artist = audiobookMetadata.artist,
+                            album = audiobookMetadata.album,
+                            genre = audiobookMetadata.genre,
+                            year = audiobookMetadata.year,
+                            totalDuration = audiobookMetadata.totalDuration
                         )
                     )
 
-                    val chapterEntities = scannedBook.chapters.map { chapter ->
+                    // NEU: Versuche Cover zu extrahieren (aus erster MP3)
+                    if (mp3Uris.isNotEmpty()) {
+                        val coverUri = metadataExtractor.extractAndSaveCover(
+                            mp3Uris.first(),
+                            audiobookId
+                        )
+                        if (coverUri != null) {
+                            // Aktualisiere Hörbuch mit Cover-URI
+                            dao.updateAudiobook(
+                                dao.getAudiobookById(audiobookId)!!.copy(coverUri = coverUri)
+                            )
+                        }
+                    }
+
+                    // Speichere Kapitel MIT METADATEN
+                    val chapterEntities = scannedBook.chapters.mapIndexed { index, chapter ->
+                        // Extrahiere Metadaten für dieses Kapitel
+                        val chapterMetadata = metadataExtractor.extractMetadata(chapter.uri.toUri())
+
                         ChapterEntity(
                             audiobookId = audiobookId,
-                            title = chapter.title,
+                            title = chapterMetadata?.title ?: chapter.title,  // Metadaten haben Vorrang
                             uri = chapter.uri,
-                            position = chapter.position
+                            position = index,
+                            duration = chapterMetadata?.duration ?: 0L,
+                            trackNumber = chapterMetadata?.trackNumber,
+                            artist = chapterMetadata?.artist,
+                            album = chapterMetadata?.album
                         )
                     }
                     dao.insertChapters(chapterEntities)
@@ -93,6 +126,7 @@ class AudiobookRepository(
             totalBooks
         }
     }
+
 
     // Private Scan-Funktion (gibt Map<Autor, List<Audiobook>> zurück)
     private suspend fun scanFolderStructure(uriString: String): Map<String, List<Audiobook>> {
@@ -230,10 +264,65 @@ class AudiobookRepository(
             coverUri = entity.coverUri,
             totalDuration = entity.totalDuration,
             currentPosition = entity.currentPosition,
+            currentChapterIndex = entity.currentChapterIndex,  // ← NEU
+            playbackSpeed = entity.playbackSpeed,              // ← NEU
             progress = progress,
             isFinished = entity.isFinished,
             lastPlayed = entity.lastPlayed,
             dateAdded = entity.dateAdded
         )
+    }
+
+    // === Fortschritt speichern ===
+
+    suspend fun updatePlaybackProgress(
+        audiobookId: Long,
+        chapterIndex: Int,
+        positionMs: Long
+    ) {
+        withContext(Dispatchers.IO) {
+            val audiobook = dao.getAudiobookById(audiobookId) ?: return@withContext
+            dao.updateAudiobook(
+                audiobook.copy(
+                    currentChapterIndex = chapterIndex,
+                    currentPosition = positionMs,
+                    lastPlayed = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun updatePlaybackSpeed(audiobookId: Long, speed: Float) {
+        withContext(Dispatchers.IO) {
+            val audiobook = dao.getAudiobookById(audiobookId) ?: return@withContext
+            dao.updateAudiobook(audiobook.copy(playbackSpeed = speed))
+        }
+    }
+
+    suspend fun setSleepTimer(audiobookId: Long, endTimeMs: Long?) {
+        withContext(Dispatchers.IO) {
+            val audiobook = dao.getAudiobookById(audiobookId) ?: return@withContext
+            dao.updateAudiobook(audiobook.copy(sleepTimerEndTime = endTimeMs))
+        }
+    }
+
+    suspend fun markAsFinished(audiobookId: Long) {
+        withContext(Dispatchers.IO) {
+            val audiobook = dao.getAudiobookById(audiobookId) ?: return@withContext
+            dao.updateAudiobook(
+                audiobook.copy(
+                    isFinished = true,
+                    currentPosition = 0,
+                    currentChapterIndex = 0
+                )
+            )
+        }
+    }
+
+    suspend fun getAudiobookById(audiobookId: Long): Audiobook? {
+        return withContext(Dispatchers.IO) {
+            val entity = dao.getAudiobookById(audiobookId)
+            entity?.let { mapEntityToAudiobook(it) }
+        }
     }
 }

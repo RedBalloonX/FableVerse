@@ -5,17 +5,17 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import io.github.redballoonx.fableverse.data.local.dao.AudiobookDao
-import io.github.redballoonx.fableverse.data.local.entity.AudiobookEntity
 import io.github.redballoonx.fableverse.data.local.entity.AuthorEntity
+import io.github.redballoonx.fableverse.data.local.entity.AudiobookEntity
 import io.github.redballoonx.fableverse.data.local.entity.ChapterEntity
 
 @Database(
     entities = [
         AuthorEntity::class,
-        AudiobookEntity::class,
+        AudiobookEntity::class,  // ← Wird verwendet, aber Import fehlt
         ChapterEntity::class
     ],
-    version = 1,
+    version = 4,
     exportSchema = true
 )
 abstract class AudiobookDatabase : RoomDatabase() {
@@ -33,7 +33,7 @@ abstract class AudiobookDatabase : RoomDatabase() {
                     AudiobookDatabase::class.java,
                     "audiobook_database"
                 )
-                    .fallbackToDestructiveMigration()  // Beim Schema-Ändern: DB neu erstellen
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

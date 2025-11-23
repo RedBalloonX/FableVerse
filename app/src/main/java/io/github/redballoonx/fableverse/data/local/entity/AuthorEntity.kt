@@ -8,5 +8,5 @@ data class AuthorEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val name: String,
-    val bookCount: Int = 0  // Anzahl der Bücher (wird beim Scannen gesetzt)
+    val bookCount: Int = 0
 )

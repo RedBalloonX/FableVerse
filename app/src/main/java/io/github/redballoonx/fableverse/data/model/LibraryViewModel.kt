@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.redballoonx.fableverse.data.model.Audiobook
 import io.github.redballoonx.fableverse.data.model.AuthorWithBooks
+
 import io.github.redballoonx.fableverse.data.repository.AudiobookRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.collections.emptyList
 
 class LibraryViewModel(
     private val audiobookRepository: AudiobookRepository

@@ -18,6 +18,14 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object LibraryScreen : Screen("library", "Library", Icons.Default.Home)
     object PlayerScreen : Screen("player", "Player", Icons.Default.PlayArrow)
     object SettingsScreen : Screen("settings", "Settings", Icons.Default.Settings)
+
+    // NEU: Player mit Parameter
+    object AudiobookPlayer {
+        const val route = "player/{audiobookId}"
+        const val audiobookIdArg = "audiobookId"
+
+        fun createRoute(audiobookId: Long) = "player/$audiobookId"
+    }
 }
 
 @Composable
@@ -27,7 +35,7 @@ fun BottomNavigationBar(navController: NavController) {
         Screen.PlayerScreen,
         Screen.SettingsScreen
     )
-    // Aktuelle Route herausfinden
+
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
 
@@ -37,9 +45,11 @@ fun BottomNavigationBar(navController: NavController) {
                 selected = currentRoute == screen.route,
                 onClick = {
                     navController.navigate(screen.route) {
-                        // Verhindert mehrfache Copies im Stack
+                        // Wichtig: popUpTo zum Start
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
                         launchSingleTop = true
-                        // Springt zu Start-Destination beim Home-Klick
                         restoreState = true
                     }
                 },
